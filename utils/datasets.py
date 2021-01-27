@@ -28,7 +28,6 @@ help_url = 'https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
 img_formats = ['bmp', 'jpg', 'jpeg', 'png', 'tif', 'tiff', 'dng']  # acceptable image suffixes
 vid_formats = ['mov', 'avi', 'mp4', 'mpg', 'mpeg', 'm4v', 'wmv', 'mkv']  # acceptable video suffixes
 logger = logging.getLogger(__name__)
-
 # Get orientation exif tag
 for orientation in ExifTags.TAGS.keys():
     if ExifTags.TAGS[orientation] == 'Orientation':
@@ -334,6 +333,21 @@ def img2label_paths(img_paths):
     return [x.replace(sa, sb, 1).replace('.' + x.split('.')[-1], '.txt') for x in img_paths]
 
 
+def get_img_label_path(data_path, img_number=200):
+    images = os.listdir(os.path.join(data_path, 'JPEGImages'))
+    images_path = []
+    labels_path = []
+    logger.info("loading files from {}...:".format(data_path))
+    for img_name in tqdm(images[:img_number]):
+        image_path = os.path.join(data_path, 'JPEGImages', img_name)
+        name = img_name.split('.')[0]
+        label_path = os.path.join(data_path, 'labels', '{}.txt'.format(name))
+        if os.path.exists(label_path):
+            images_path.append(image_path)
+            labels_path.append(label_path)
+    return images_path, labels_path
+
+
 class LoadImagesAndLabels(Dataset):  # for training/testing
     def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
                  cache_images=False, single_cls=False, stride=32, pad=0.0, rank=-1):
@@ -347,26 +361,12 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         self.stride = stride
 
         try:
-            f = []  # image files
-            for p in path if isinstance(path, list) else [path]:
-                p = Path(p)  # os-agnostic
-                if p.is_dir():  # dir
-                    f += glob.glob(str(p / '**' / '*.*'), recursive=True)
-                elif p.is_file():  # file
-                    with open(p, 'r') as t:
-                        t = t.read().strip().splitlines()
-                        parent = str(p.parent) + os.sep
-                        f += [x.replace('./', parent) if x.startswith('./') else x for x in t]  # local to global path
-                else:
-                    raise Exception('%s does not exist' % p)
-            self.img_files = sorted([x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in img_formats])
-            assert self.img_files, 'No images found'
+            self.img_files, self.label_files = get_img_label_path(path, img_number=200)
         except Exception as e:
             raise Exception('Error loading data from %s: %s\nSee %s' % (path, e, help_url))
 
         # Check cache
-        self.label_files = img2label_paths(self.img_files)  # labels
-        cache_path = Path(self.label_files[0]).parent.with_suffix('.cache')  # cached labels
+        cache_path = Path('./labels.cache')  # cached labels
         if cache_path.is_file():
             cache = torch.load(cache_path)  # load
             if cache['hash'] != get_hash(self.label_files + self.img_files) or 'results' not in cache:  # changed
@@ -476,6 +476,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
         x['hash'] = get_hash(self.label_files + self.img_files)
         x['results'] = [nf, nm, ne, nc, i + 1]
+
         torch.save(x, path)  # save for next time
         logging.info(f"New cache created: {path}")
         return x

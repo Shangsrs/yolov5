@@ -7,6 +7,11 @@ Usage:
 import argparse
 import sys
 import time
+import os
+_DIR = os.path.abspath(os.path.dirname(__file__))
+prj_path = os.path.abspath(os.path.join(_DIR, '..'))
+if prj_path not in sys.path:
+    sys.path.insert(0, prj_path)
 
 sys.path.append('./')  # to run '$ python *.py' files in subdirectories
 
